@@ -17,6 +17,9 @@ import sys
 import json
 from datetime import datetime, timezone
 
+# Ensure repository root is importable when running `python scripts/review.py`.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def main():
     """Run the end-to-end AI code review pipeline."""
