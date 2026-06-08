@@ -195,14 +195,14 @@ Please review this code and return your analysis as JSON.
 """
 
     # Call Gemini
-        # Reduce max_output_tokens to lower cost and token usage in CI
-        response = model.generate_content(
-            user_prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.2,  # Low temp for deterministic review
-                max_output_tokens=1024,
-            ),
-        )
+    # Reduce max_output_tokens to lower cost and token usage in CI
+    response = model.generate_content(
+        user_prompt,
+        generation_config=genai.GenerationConfig(
+            temperature=0.2,  # Low temp for deterministic review
+            max_output_tokens=1024,
+        ),
+    )
 
     raw_text = response.text.strip()
 
