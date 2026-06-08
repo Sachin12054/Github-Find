@@ -61,4 +61,5 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          python scripts/review.py
+          # Run the review module as a package so imports like `from scripts.*` work
+          python -m scripts.review

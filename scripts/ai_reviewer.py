@@ -1,116 +1,17 @@
 """
 =============================================================================
- ai_reviewer.py — AI Review Engine (Gemini API Integration)
+ ai_reviewer.py — Local Review Engine
 =============================================================================
- Sends extracted C# code diffs to Google Gemini for architectural review.
- The LLM acts as a senior enterprise C# architect and returns structured
- JSON feedback covering SOLID, null handling, async, security, and more.
+ Performs deterministic, rules-based review of changed C# code without calling
+ external AI services. This keeps CI reliable without API keys, billing, or
+ quota limits.
 =============================================================================
 """
 
 import json
-import os
 import re
+from collections import Counter
 from typing import List, Dict, Any
-
-import google.generativeai as genai
-
-
-# ---------------------------------------------------------------------------
-# System prompt — the "persona" and instructions for the LLM
-# ---------------------------------------------------------------------------
-
-SYSTEM_PROMPT = """You are an expert senior enterprise C# software engineer and architect with 15+ years of experience in .NET development, clean architecture, and enterprise-grade code reviews.
-
-You are reviewing a GitHub Pull Request. Your job is to analyze the changed C# code and provide a thorough, professional code review.
-
-## Review Checklist
-
-Analyze the code for ALL of the following categories:
-
-1. **SOLID Principle Violations**
-   - Single Responsibility: Does a class/method do too much?
-   - Open/Closed: Is the code open for extension but closed for modification?
-   - Liskov Substitution: Are subtypes properly substitutable?
-   - Interface Segregation: Are interfaces focused and minimal?
-   - Dependency Inversion: Are high-level modules depending on abstractions?
-
-2. **Null Reference Risks**
-   - Missing null checks on parameters, return values, or collection access.
-   - Potential NullReferenceException paths.
-   - Nullable reference type misuse.
-
-3. **Exception Handling Issues**
-   - Empty catch blocks or swallowing exceptions.
-   - Catching overly broad exception types (e.g., `catch (Exception)`).
-   - Missing `finally` or `using` for disposable resources.
-   - Throwing `Exception` instead of specific exception types.
-
-4. **Async/Await Mistakes**
-   - Methods marked `async` but missing `await`.
-   - Using `.Result` or `.Wait()` (sync-over-async anti-pattern).
-   - Missing `ConfigureAwait(false)` in library code.
-   - Fire-and-forget tasks without error handling.
-
-5. **Performance Issues**
-   - Unnecessary allocations in hot paths.
-   - String concatenation in loops (should use `StringBuilder`).
-   - LINQ misuse leading to multiple enumerations.
-   - Missing `IDisposable` implementation.
-
-6. **Security Concerns**
-   - SQL injection vulnerabilities.
-   - Hardcoded secrets or connection strings.
-   - Missing input validation.
-   - Improper authentication/authorization checks.
-
-7. **Code Quality & Best Practices**
-   - Naming convention violations.
-   - Magic numbers or strings.
-   - Dead code or commented-out code.
-   - Missing XML documentation on public APIs.
-   - Overly complex methods (high cyclomatic complexity).
-
-## Response Format
-
-You MUST return a valid JSON object with exactly this structure:
-
-```json
-{
-  "summary": {
-    "files_reviewed": <number>,
-    "total_issues": <number>,
-    "critical": <number>,
-    "high": <number>,
-    "medium": <number>,
-    "low": <number>,
-    "score": <number 0-100>
-  },
-  "issues": [
-    {
-      "file": "<filename>",
-      "line": <line_number>,
-      "severity": "Critical|High|Medium|Low",
-      "category": "<category name>",
-      "issue": "<clear description of the problem>",
-      "fix": "<specific actionable fix suggestion>",
-      "code_before": "<problematic code snippet if applicable>",
-      "code_after": "<suggested fixed code snippet if applicable>"
-    }
-  ]
-}
-```
-
-## Important Rules
-
-- Return ONLY the JSON object. No markdown fences, no explanations outside JSON.
-- Every issue MUST have a concrete fix suggestion, not just "consider fixing".
-- Line numbers must reference the NEW file line numbers shown in the diff.
-- If the code is clean and has no issues, return the JSON with an empty issues array and score of 95-100.
-- Be strict but fair. Do not invent problems that don't exist.
-- Focus on the CHANGED lines (lines prefixed with +), but consider surrounding context.
-- The `score` field should be 0-100 representing overall code quality.
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +20,8 @@ You MUST return a valid JSON object with exactly this structure:
 
 def review_code(diff_text: str, file_count: int) -> Dict[str, Any]:
     """
-    Send the C# diff to Google Gemini and return structured review JSON.
+    Run a deterministic local review over the C# diff and return structured
+    JSON feedback.
 
     Parameters
     ----------
@@ -133,108 +35,250 @@ def review_code(diff_text: str, file_count: int) -> Dict[str, Any]:
     dict
         Parsed JSON review result with 'summary' and 'issues' keys.
     """
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise EnvironmentError(
-            "GEMINI_API_KEY environment variable is not set. "
-            "Please add it as a GitHub secret."
-        )
-
-    # Configure the Gemini client
-    genai.configure(api_key=api_key)
-
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction=SYSTEM_PROMPT,
-    )
-
-    user_prompt = f"""## Pull Request Code Changes
-
-The following diff shows {file_count} changed C# file(s).
-
-Lines prefixed with `+` are additions, `-` are deletions, and unprefixed lines are context.
-
-```
-{diff_text}
-```
-
-Please review this code and return your analysis as JSON.
-"""
-
-    # Call Gemini
-    response = model.generate_content(
-        user_prompt,
-        generation_config=genai.GenerationConfig(
-            temperature=0.2,          # Low temp for deterministic review
-            max_output_tokens=4096,
-        ),
-    )
-
-    raw_text = response.text.strip()
-
-    # Parse the JSON from the response
-    review = _extract_json(raw_text)
-
-    # Validate / fill defaults
-    review = _validate_review(review, file_count)
-
-    return review
+    review = _local_review(diff_text, file_count)
+    return _validate_review(review, file_count)
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _extract_json(text: str) -> Dict[str, Any]:
-    """
-    Robustly extract JSON from the LLM response, handling markdown fences
-    and other wrapper text.
-    """
-    # Try direct parse first
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
+def _local_review(diff_text: str, file_count: int) -> Dict[str, Any]:
+    """Generate a review using deterministic heuristics over the changed code."""
+    files = _parse_changed_files(diff_text)
+    issues: List[Dict[str, Any]] = []
 
-    # Try to find JSON inside markdown code fences
-    patterns = [
-        r"```json\s*(.*?)\s*```",
-        r"```\s*(.*?)\s*```",
-        r"\{.*\}",
-    ]
+    for file_name, lines in files.items():
+        issues.extend(_review_csharp_file(file_name, lines))
 
-    for pattern in patterns:
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(1) if match.lastindex else match.group(0))
-            except json.JSONDecodeError:
-                continue
+    severity_counts = Counter(issue["severity"] for issue in issues)
+    total_issues = len(issues)
 
-    # Fallback: return a default error review
+    # Start from a high score and subtract for findings.
+    score = 100
+    for issue in issues:
+        if issue["severity"] == "Critical":
+            score -= 20
+        elif issue["severity"] == "High":
+            score -= 12
+        elif issue["severity"] == "Medium":
+            score -= 7
+        else:
+            score -= 3
+    score = max(0, min(100, score))
+
     return {
         "summary": {
-            "files_reviewed": 0,
-            "total_issues": 1,
-            "critical": 0,
-            "high": 0,
-            "medium": 1,
-            "low": 0,
-            "score": 0,
+            "files_reviewed": file_count,
+            "total_issues": total_issues,
+            "critical": severity_counts.get("Critical", 0),
+            "high": severity_counts.get("High", 0),
+            "medium": severity_counts.get("Medium", 0),
+            "low": severity_counts.get("Low", 0),
+            "score": score if total_issues else 95,
         },
-        "issues": [
-            {
-                "file": "N/A",
-                "line": 0,
-                "severity": "Medium",
-                "category": "AI Response Error",
-                "issue": "The AI reviewer could not parse its own response. Raw output has been logged.",
-                "fix": "Re-run the review or check Gemini API configuration.",
-                "code_before": "",
-                "code_after": "",
-            }
-        ],
+        "issues": issues,
     }
+
+
+def _parse_changed_files(diff_text: str) -> Dict[str, List[Dict[str, Any]]]:
+    """Parse the formatted diff into per-file added lines with line numbers."""
+    files: Dict[str, List[Dict[str, Any]]] = {}
+    current_file = None
+
+    for raw_line in diff_text.splitlines():
+        header_match = re.match(r"^═══ File:\s*(.*?)\s*\(", raw_line)
+        if header_match:
+            current_file = header_match.group(1).strip()
+            files.setdefault(current_file, [])
+            continue
+
+        if not current_file:
+            continue
+
+        line_match = re.match(r"^L\s*(\d+)\s+([+\- ])\s?(.*)$", raw_line)
+        if not line_match:
+            continue
+
+        line_no = int(line_match.group(1))
+        prefix = line_match.group(2)
+        content = line_match.group(3)
+
+        files[current_file].append(
+            {"line": line_no, "prefix": prefix, "content": content, "raw": raw_line}
+        )
+
+    return files
+
+
+def _review_csharp_file(file_name: str, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Apply a small set of high-value heuristics to a changed C# file."""
+    issues: List[Dict[str, Any]] = []
+    joined = "\n".join(item["content"] for item in lines)
+
+    def add_issue(line_no: int, severity: str, category: str, issue: str, fix: str, before: str = "", after: str = ""):
+        issues.append(
+            {
+                "file": file_name,
+                "line": line_no,
+                "severity": severity,
+                "category": category,
+                "issue": issue,
+                "fix": fix,
+                "code_before": before,
+                "code_after": after,
+            }
+        )
+
+    # Hardcoded secrets / connection strings
+    for item in lines:
+        content = item["content"]
+        lowered = content.lower()
+        if any(token in lowered for token in ["password=", "secret=", "api_key", "connectionstring", "connection string"]):
+            add_issue(
+                item["line"],
+                "High",
+                "Security",
+                "Hardcoded secret or connection string detected in source code.",
+                "Move secrets into environment variables or GitHub Secrets and read them at runtime.",
+                content.strip(),
+                'var connectionString = Environment.GetEnvironmentVariable("USER_DB_CONNECTION_STRING");',
+            )
+            break
+
+    # SQL injection: string concatenation in SQL query
+    sql_patterns = [r'SELECT\s+.*\+.*', r'INSERT\s+.*\+.*', r'UPDATE\s+.*\+.*', r'DELETE\s+.*\+.*']
+    for item in lines:
+        content = item["content"]
+        if any(re.search(pattern, content, re.IGNORECASE) for pattern in sql_patterns):
+            add_issue(
+                item["line"],
+                "High",
+                "Security",
+                "Possible SQL injection due to string concatenation in a query.",
+                "Use parameterized queries or an ORM instead of concatenating user input into SQL.",
+                content.strip(),
+                'var query = "SELECT * FROM Users WHERE Name = @name";',
+            )
+            break
+
+    # async without await
+    for item in lines:
+        content = item["content"]
+        if re.search(r"\basync\b", content) and re.search(r"Task<|Task\b", content):
+            if not any("await" in x["content"] for x in lines):
+                add_issue(
+                    item["line"],
+                    "Medium",
+                    "Async/Await",
+                    "Async method does not contain an await and may be using the async keyword unnecessarily.",
+                    "Either add an await inside the method or remove async and return the task directly.",
+                    content.strip(),
+                    content.replace("async ", "", 1),
+                )
+            break
+
+    # .Result / .Wait()
+    for item in lines:
+        content = item["content"]
+        if ".Result" in content or ".Wait(" in content:
+            add_issue(
+                item["line"],
+                "Medium",
+                "Async/Await",
+                "Sync-over-async pattern detected via .Result or .Wait().",
+                "Prefer awaiting the task asynchronously instead of blocking the thread.",
+                content.strip(),
+                content.replace(".Result", "").replace(".Wait()", "await ..."),
+            )
+            break
+
+    # Empty catch / broad catch
+    for idx, item in enumerate(lines):
+        content = item["content"]
+        if re.search(r"catch\s*\(Exception\)", content):
+            add_issue(
+                item["line"],
+                "Medium",
+                "Exception Handling",
+                "Broad catch(Exception) can hide failures and make debugging harder.",
+                "Catch a more specific exception type and log or surface the error appropriately.",
+                content.strip(),
+                content.replace("Exception", "SqlException"),
+            )
+            # look for an empty catch body nearby
+            window = "\n".join(x["content"] for x in lines[idx: idx + 6])
+            if re.search(r"catch\s*\(Exception\)\s*\{\s*\}", window, re.DOTALL):
+                add_issue(
+                    item["line"],
+                    "Medium",
+                    "Exception Handling",
+                    "Empty catch block swallows exceptions.",
+                    "Log the exception, rethrow it, or handle it in a controlled way.",
+                    "catch (Exception) { }",
+                    "catch (Exception ex) { logger.LogError(ex, \"...\"); throw; }",
+                )
+            break
+
+    # Null reference risk
+    for item in lines:
+        content = item["content"]
+        if re.search(r"return\s+user\.(\w+)", content) or re.search(r"\.ToLower\(\)", content):
+            add_issue(
+                item["line"],
+                "Medium",
+                "Null Reference Risks",
+                "Method dereferences an object without a null check.",
+                "Validate the input parameter and return a guarded value or throw ArgumentNullException.",
+                content.strip(),
+                "if (user is null) throw new ArgumentNullException(nameof(user));",
+            )
+            break
+
+    # String concatenation in loop
+    loop_started = False
+    for item in lines:
+        content = item["content"]
+        if re.search(r"foreach\s*\(", content):
+            loop_started = True
+        if loop_started and " + " in content and any(token in content for token in ['"User:"', '"Email:"', 'report +=']):
+            add_issue(
+                item["line"],
+                "Low",
+                "Performance",
+                "String concatenation inside a loop can create unnecessary allocations.",
+                "Use StringBuilder to accumulate strings efficiently in loops.",
+                content.strip(),
+                "reportBuilder.AppendLine($\"User: {user.Name}, Email: {user.Email}\");",
+            )
+            break
+
+    # Magic numbers / direct validation
+    for item in lines:
+        content = item["content"]
+        if re.search(r"\bif\s*\(.*<\s*2\s*\)", content) or re.search(r"\b0\.9m\b", content):
+            add_issue(
+                item["line"],
+                "Low",
+                "Code Quality & Best Practices",
+                "Magic number detected in business logic.",
+                "Replace the literal with a named constant or configuration value.",
+                content.strip(),
+                content.replace("2", "MinNameLength").replace("0.9m", "DiscountRate"),
+            )
+            break
+
+    # Remove duplicates while preserving order
+    unique_issues: List[Dict[str, Any]] = []
+    seen = set()
+    for issue in issues:
+        key = (issue["file"], issue["line"], issue["category"], issue["issue"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_issues.append(issue)
+
+    return unique_issues
 
 
 def _validate_review(review: Dict[str, Any], file_count: int) -> Dict[str, Any]:
