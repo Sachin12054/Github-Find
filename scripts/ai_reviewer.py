@@ -155,12 +155,10 @@ def review_code(diff_text: str, file_count: int) -> Dict[str, Any]:
     # - limit total characters to a conservative size
     def _shrink_diff(text: str, max_chars: int = 2000, max_added_per_file: int = 200):
         sections: List[str] = []
-        current_file = None
         added_count = 0
         for line in text.splitlines():
             # Preserve file header lines so the model knows which file the code came from
             if line.strip().startswith("═══ File:"):
-                current_file = line
                 added_count = 0
                 sections.append(line)
                 continue
