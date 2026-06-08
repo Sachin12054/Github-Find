@@ -148,27 +148,61 @@ def review_code(diff_text: str, file_count: int) -> Dict[str, Any]:
         system_instruction=SYSTEM_PROMPT,
     )
 
+    # To reduce token usage and avoid hitting free-tier quotas, send a
+    # reduced version of the diff to the model:
+    # - prefer added lines only (+)
+    # - keep file headers for context
+    # - limit total characters to a conservative size
+    def _shrink_diff(text: str, max_chars: int = 2000, max_added_per_file: int = 200):
+        sections: List[str] = []
+        current_file = None
+        added_count = 0
+        for line in text.splitlines():
+            # Preserve file header lines so the model knows which file the code came from
+            if line.strip().startswith("═══ File:"):
+                current_file = line
+                added_count = 0
+                sections.append(line)
+                continue
+
+            # Keep only lines that represent additions (contain '+ ' after the line number)
+            # The formatted diff lines look like: 'L  12 + code...'
+            if "+ " in line:
+                # enforce per-file limit
+                if added_count < max_added_per_file:
+                    sections.append(line)
+                    added_count += 1
+
+            # Stop if we've reached max size
+            if sum(len(s) for s in sections) > max_chars:
+                break
+
+        # If we couldn't find any added lines (very small diffs), fall back to original
+        out = "\n".join(sections).strip()
+        return out if out else text[:max_chars]
+
+    trimmed_diff = _shrink_diff(diff_text, max_chars=2000, max_added_per_file=200)
+
     user_prompt = f"""## Pull Request Code Changes
 
-The following diff shows {file_count} changed C# file(s).
-
-Lines prefixed with `+` are additions, `-` are deletions, and unprefixed lines are context.
+The following diff shows {file_count} changed C# file(s). Only added lines are included for token efficiency.
 
 ```
-{diff_text}
+{trimmed_diff}
 ```
 
 Please review this code and return your analysis as JSON.
 """
 
     # Call Gemini
-    response = model.generate_content(
-        user_prompt,
-        generation_config=genai.GenerationConfig(
-            temperature=0.2,          # Low temp for deterministic review
-            max_output_tokens=4096,
-        ),
-    )
+        # Reduce max_output_tokens to lower cost and token usage in CI
+        response = model.generate_content(
+            user_prompt,
+            generation_config=genai.GenerationConfig(
+                temperature=0.2,  # Low temp for deterministic review
+                max_output_tokens=1024,
+            ),
+        )
 
     raw_text = response.text.strip()
 
