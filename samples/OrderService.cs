@@ -1,5 +1,5 @@
 // =============================================================================
-// OrderService.cs — Another sample C# file with issues for testing
+// OrderService.cs — Clean sample C# order workflow for AI review demos
 // =============================================================================
 
 using System;
@@ -11,64 +11,78 @@ namespace SampleApp.Services
     public class OrderService
     {
         private readonly UserService _userService;
+        private const decimal DiscountThreshold = 100m;
+        private const decimal DiscountRate = 0.9m;
 
-        public OrderService()
+        public OrderService(UserService userService)
         {
-            // ISSUE: Tight coupling, no DI (SOLID)
-            _userService = new UserService();
+            _userService = userService ?? throw new ArgumentNullException(nameof(userService));
         }
 
-        // ISSUE: async without await
         public async Task<Order> CreateOrder(int userId, List<OrderItem> items)
         {
+            if (items is null || items.Count == 0)
+            {
+                throw new ArgumentException("At least one order item is required.", nameof(items));
+            }
+
+            var user = await _userService.GetUserByIdAsync(userId);
+            if (user is null)
+            {
+                throw new InvalidOperationException($"User {userId} was not found.");
+            }
+
+            await Task.Yield();
+
             var order = new Order
             {
                 UserId = userId,
                 Items = items,
                 Total = CalculateTotal(items),
-                CreatedAt = DateTime.Now  // ISSUE: Should use DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow
             };
 
             return order;
         }
 
-        // ISSUE: No input validation, no null check
         public decimal CalculateTotal(List<OrderItem> items)
         {
+            if (items is null)
+            {
+                throw new ArgumentNullException(nameof(items));
+            }
+
             decimal total = 0;
             foreach (var item in items)
             {
+                if (item is null)
+                {
+                    throw new ArgumentException("Order items cannot contain null entries.", nameof(items));
+                }
+
                 total += item.Price * item.Quantity;
             }
-            // ISSUE: Magic number
-            if (total > 100)
+            if (total > DiscountThreshold)
             {
-                total *= 0.9m; // 10% discount — magic number
+                total *= DiscountRate;
             }
             return total;
         }
 
-        // ISSUE: Catching generic Exception, throwing generic Exception
         public void CancelOrder(int orderId)
         {
-            try
+            if (orderId <= 0)
             {
-                // Cancel logic
-                if (orderId <= 0)
-                    throw new Exception("Invalid order ID");
+                throw new ArgumentOutOfRangeException(nameof(orderId), "Invalid order ID");
             }
-            catch (Exception ex)
-            {
-                throw new Exception("Failed to cancel order", ex);
-            }
+
+            // Cancel logic
         }
 
-        // ISSUE: No disposal of resources, no using statement
         public async Task ExportOrders()
         {
-            var file = System.IO.File.OpenWrite("orders.csv");
+            using var file = System.IO.File.OpenWrite("orders.csv");
             // Write data...
-            // ISSUE: file stream never closed/disposed
         }
     }
 

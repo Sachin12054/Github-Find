@@ -15,7 +15,7 @@ Github/
 │   ├── __init__.py                   ← Package marker
 │   ├── review.py                     ← Main orchestrator (entry point)
 │   ├── diff_parser.py                ← Fetches & parses PR diff (C# only)
-│   ├── ai_reviewer.py                ← Gemini AI integration
+│   ├── ai_reviewer.py                ← Groq AI integration
 │   └── github_commenter.py           ← Posts comments to PR
 ├── samples/
 │   ├── UserService.cs                ← Sample C# with bugs (for demo)
@@ -32,12 +32,10 @@ Github/
 
 ## 🚀 How to Deploy (Step-by-Step)
 
-### Step 1: Get a FREE Gemini API Key
+### Step 1: Get a FREE Groq API Key
 
-1. Go to → **https://aistudio.google.com/apikey**
-2. Sign in with Google
-3. Click **"Create API Key"**
-4. Copy the key (save it somewhere safe)
+1. Go to the Groq console and create an API key
+2. Copy the key (save it somewhere safe)
 
 ### Step 2: Create a GitHub Repository
 
@@ -60,13 +58,13 @@ git push -u origin main
 
 > Replace `YOUR_USERNAME` and `YOUR_REPO` with your actual values.
 
-### Step 4: Add the Gemini API Key as a GitHub Secret
+### Step 4: Add the Groq API Key as a GitHub Secret
 
 1. Go to your repo on GitHub
 2. Click **Settings** → **Secrets and variables** → **Actions**
 3. Click **"New repository secret"**
-4. **Name:** `GEMINI_API_KEY`
-5. **Value:** paste your Gemini API key
+4. **Name:** `GROQ_API_KEY`
+5. **Value:** paste your Groq API key
 6. Click **"Add secret"**
 
 > [!IMPORTANT]
@@ -102,8 +100,8 @@ git push -u origin main
 You can test the AI review locally on the sample files:
 
 ```bash
-# Set your Gemini API key
-set GEMINI_API_KEY=your-key-here
+# Set your Groq API key
+set GROQ_API_KEY=your-key-here
 
 # Install dependencies
 pip install -r requirements.txt

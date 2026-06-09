@@ -3,10 +3,10 @@
  test_local.py — Local Testing Script
 =============================================================================
  Run this script locally to test the AI review on the sample C# files
- without needing a real GitHub PR. Requires GEMINI_API_KEY env var.
+ without needing a real GitHub PR. Requires GROQ_API_KEY env var.
  
  Usage:
-   set GEMINI_API_KEY=your-key-here
+     set GROQ_API_KEY=your-key-here
    python test_local.py
 =============================================================================
 """
@@ -22,9 +22,9 @@ from scripts.ai_reviewer import review_code
 
 
 def main():
-    if not os.environ.get("GEMINI_API_KEY"):
-        print("[ERROR] Please set GEMINI_API_KEY environment variable.")
-        print("   Example: set GEMINI_API_KEY=your-key-here")
+    if not os.environ.get("GROQ_API_KEY"):
+        print("[ERROR] Please set GROQ_API_KEY environment variable.")
+        print("   Example: set GROQ_API_KEY=your-key-here")
         sys.exit(1)
 
     # Read sample files
@@ -52,7 +52,7 @@ def main():
     print("=" * 60)
     print(f"Files: {file_count}")
     print(f"Diff size: {len(diff_text)} chars")
-    print("\nSending to Gemini...\n")
+    print("\nSending to Groq...\n")
 
     review = review_code(diff_text, file_count)
 

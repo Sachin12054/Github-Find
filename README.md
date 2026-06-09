@@ -1,10 +1,10 @@
 # AI Code Review GitHub Action for C#
 
-> Automated AI-powered code review system that triggers on GitHub Pull Requests, analyzes changed C# code using Google Gemini, and posts structured review feedback directly into the PR.
+> Automated AI-powered code review system that triggers on GitHub Pull Requests, analyzes changed C# code using Groq, and posts structured review feedback directly into the PR.
 
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Google Gemini](https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
+[![Groq](https://img.shields.io/badge/Groq-00A884?style=for-the-badge)](https://groq.com/)
 
 ---
 
@@ -40,7 +40,7 @@ An **AI-powered automated code reviewer** that:
 
 1. **Detects** when a PR is created or updated
 2. **Reads** changed C# files from the PR diff
-3. **Sends** code to Google Gemini for expert review
+3. **Sends** code to Groq for expert review
 4. **Generates** structured feedback with severity & fix suggestions
 5. **Posts** review comments directly into the GitHub PR
 
@@ -77,7 +77,7 @@ GitHub PR --> GitHub Action --> Extract Diff --> AI Review --> PR Comments
 +-------------------------------+
 |  Phase 2: AI Review           |
 |  (scripts/ai_reviewer.py)     |
-|  - Send diff to Gemini API    |
+|  - Send diff to Groq API      |
 |  - System prompt: C# expert   |
 |  - Get structured JSON back   |
 +-------+-----------------------+
@@ -99,7 +99,7 @@ GitHub PR --> GitHub Action --> Extract Diff --> AI Review --> PR Comments
 ### Core Features
 - **Automatic PR Trigger** -- Runs on PR open & update
 - **C# File Filtering** -- Only reviews `.cs` files (saves tokens)
-- **AI-Powered Review** -- Google Gemini as senior C# architect
+- **AI-Powered Review** -- Groq-backed senior C# architect review
 - **Structured JSON Output** -- Parseable, consistent results
 - **PR Comments** -- Summary + inline comments posted automatically
 
@@ -126,20 +126,19 @@ GitHub PR --> GitHub Action --> Extract Diff --> AI Review --> PR Comments
 ### Prerequisites
 
 - A GitHub repository with C# code
-- A Google Gemini API key (free tier available)
+- A Groq API key
 
-### Step 1: Get a Gemini API Key
+### Step 1: Get a Groq API Key
 
-1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
-2. Click **"Create API Key"**
-3. Copy the key
+1. Go to the Groq console and create an API key.
+2. Copy the key
 
 ### Step 2: Add GitHub Secret
 
 1. Go to your GitHub repository -> **Settings** -> **Secrets and variables** -> **Actions**
 2. Click **"New repository secret"**
-3. Name: `GEMINI_API_KEY`
-4. Value: paste your Gemini API key
+3. Name: `GROQ_API_KEY`
+4. Value: paste your Groq API key
 5. Click **"Add secret"**
 
 > **Note:** `GITHUB_TOKEN` is automatically provided by GitHub Actions -- no setup needed.
@@ -157,7 +156,7 @@ your-repo/
 |   |-- __init__.py
 |   |-- review.py               <-- Main orchestrator
 |   |-- diff_parser.py          <-- Diff extraction
-|   |-- ai_reviewer.py          <-- Gemini AI integration
+|   |-- ai_reviewer.py          <-- Groq AI integration
 |   +-- github_commenter.py     <-- PR comment publisher
 |-- requirements.txt            <-- Python dependencies
 +-- prompts.md                  <-- Prompt documentation
@@ -188,9 +187,9 @@ Then create a branch, modify a `.cs` file, and open a Pull Request. The AI revie
        |
 4. Filters only .cs files, parses unified-diff patches
        |
-5. ai_reviewer.py sends formatted diff to Gemini
+5. ai_reviewer.py sends formatted diff to Groq
        |
-6. Gemini returns structured JSON review
+6. Groq returns structured JSON review
        |
 7. github_commenter.py posts:
    - Summary comment (score, table, detailed findings)
@@ -242,7 +241,7 @@ ai-code-review/
 |   |-- __init__.py                 # Python package marker
 |   |-- review.py                   # Main orchestrator (entry point)
 |   |-- diff_parser.py              # PR diff extraction & C# filtering
-|   |-- ai_reviewer.py              # Gemini AI integration & review engine
+|   |-- ai_reviewer.py              # Groq AI integration & review engine
 |   +-- github_commenter.py         # GitHub PR comment publisher
 |
 |-- samples/
@@ -265,13 +264,13 @@ This project demonstrates **External API Integration** as the mandatory AI capab
 
 | API | Purpose |
 |-----|---------|
-| **Google Gemini API** | AI-powered code analysis and review generation |
+| **Groq API** | AI-powered code analysis and review generation |
 | **GitHub REST API** | Fetch PR diffs, post comments, create reviews |
 
 ### How AI is Used
 
 1. **Development:** AI assistants (Claude/Copilot) used to build the project
-2. **Runtime:** Gemini API analyzes C# code and generates structured reviews
+2. **Runtime:** Groq API analyzes C# code and generates structured reviews
 3. **Prompt Engineering:** Carefully crafted system prompt ensures consistent, professional output
 
 ---
@@ -282,8 +281,8 @@ This project demonstrates **External API Integration** as the mandatory AI capab
 |-----------|------------|
 | **CI/CD** | GitHub Actions |
 | **Language** | Python 3.11 |
-| **AI Model** | Google Gemini 2.0 Flash |
-| **APIs** | GitHub REST API, Gemini API |
+| **AI Model** | Groq Llama 3.1 70B Versatile |
+| **APIs** | GitHub REST API, Groq API |
 | **Output** | Structured JSON, Markdown |
 
 ---
@@ -292,7 +291,7 @@ This project demonstrates **External API Integration** as the mandatory AI capab
 
 - [x] AI-Assisted Development (documented in prompts.md)
 - [x] Prompt Documentation (prompts.md)
-- [x] AI Capability: External API Integration (Gemini + GitHub API)
+- [x] AI Capability: External API Integration (Groq + GitHub API)
 - [x] Working End-to-End Flow
 - [x] Structured Output (JSON -> Markdown)
 - [x] Severity Classification

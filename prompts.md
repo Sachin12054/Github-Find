@@ -29,7 +29,7 @@ back into the PR. Provide the architecture and file structure.
 ```
 Generate a GitHub Action workflow YAML that triggers on pull_request (opened and
 synchronize), sets up Python 3.11, installs dependencies from requirements.txt,
-and runs a Python script with GITHUB_TOKEN and GEMINI_API_KEY secrets.
+and runs a Python script with GITHUB_TOKEN and GROQ_API_KEY secrets.
 ```
 
 ### Prompt 3 — Diff Parser
@@ -43,7 +43,7 @@ structured data with line numbers, change types, and content.
 ### Prompt 4 — AI Review Engine
 
 ```
-Build a Python module that sends C# code diffs to Google Gemini API. The system
+Build a Python module that sends C# code diffs to the Groq API. The system
 prompt should instruct the LLM to act as a senior C# architect reviewing for
 SOLID violations, null reference risks, async/await mistakes, exception handling
 issues, performance problems, and security concerns. The response must be
